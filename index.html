@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Signing Agreement</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#111}
+    h1{font-size:1.6rem;margin-bottom:0.2rem}
+    p.notice{background:#fff8e1;border-left:4px solid #ffd54f;padding:12px;border-radius:6px}
+    .canvas-wrap{border:1px solid #ddd;padding:12px;border-radius:8px;margin-top:16px;background:#fafafa}
+    canvas{display:block;background:#fff;border:1px dashed #ccc;width:100%;height:200px;touch-action:none}
+    .controls{margin-top:8px;display:flex;gap:8px}
+    button{padding:8px 12px;border-radius:6px;border:1px solid #bbb;background:#f6f6f6;cursor:pointer}
+    button.primary{background:#0366d6;color:white;border-color:#0356b0}
+    .signed{margin-top:16px}
+    .small{font-size:0.9rem;color:#555}
+  </style>
+</head>
+<body>
+  <h1>Signing Agreement</h1>
+  <p class="notice">Callum is no responsible for any harm for going on the bed. If you agree, please sign here.</p>
+
+  <div class="canvas-wrap">
+    <label class="small">Signature area (draw with mouse, touch, or stylus):</label>
+    <canvas id="sig" width="800" height="200"></canvas>
+    <div class="controls">
+      <button id="clear">Clear</button>
+      <button id="undo">Undo</button>
+      <button id="download" class="primary">Sign &amp; Download</button>
+    </div>
+    <p class="small">When you click "Sign &amp; Download" your signature will be exported as a PNG you can save or print. No data is sent to a server.</p>
+    <div id="signed" class="signed"></div>
+  </div>
+
+  <script>
+    // Simple signature pad implementation with undo
+    const canvas = document.getElementById('sig');
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
+    let currentPath = [];
+    const paths = [];
+
+    function getPointerPos(e){
+      const rect = canvas.getBoundingClientRect();
+      if (e.touches && e.touches[0]) e = e.touches[0];
+      return {x: (e.clientX - rect.left) * (canvas.width / rect.width), y: (e.clientY - rect.top) * (canvas.height / rect.height)};
+    }
+
+    function start(e){
+      e.preventDefault();
+      drawing = true;
+      currentPath = [];
+      const p = getPointerPos(e);
+      currentPath.push(p);
+      draw();
+    }
+    function move(e){
+      if(!drawing) return;
+      e.preventDefault();
+      const p = getPointerPos(e);
+      currentPath.push(p);
+      draw();
+    }
+    function end(e){
+      if(!drawing) return;
+      drawing = false;
+      paths.push(currentPath.slice());
+    }
+
+    function draw(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#111';
+      for(let path of paths) drawPath(path);
+      drawPath(currentPath);
+    }
+    function drawPath(path){
+      if(!path || path.length==0) return;
+      ctx.beginPath();
+      ctx.moveTo(path[0].x, path[0].y);
+      for(let i=1;i<path.length;i++) ctx.lineTo(path[i].x, path[i].y);
+      ctx.stroke();
+    }
+
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('touchstart', start);
+    window.addEventListener('mousemove', move);
+    canvas.addEventListener('touchmove', move);
+    window.addEventListener('mouseup', end);
+    canvas.addEventListener('touchend', end);
+
+    document.getElementById('clear').addEventListener('click', ()=>{ paths.length=0; currentPath=[]; draw(); document.getElementById('signed').innerHTML=''; });
+    document.getElementById('undo').addEventListener('click', ()=>{ paths.pop(); draw(); });
+
+    document.getElementById('download').addEventListener('click', ()=>{
+      if(paths.length===0){ if(!confirm('No signature detected. Do you still want to proceed?')) return; }
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = 'signature.png';
+      link.click();
+
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.style.maxWidth='100%';
+      const signedDiv = document.getElementById('signed');
+      signedDiv.innerHTML = '<strong>Signed:</strong>';
+      signedDiv.appendChild(img);
+    });
+
+    // initialize blank canvas background
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+  </script>
+</body>
+</html>
