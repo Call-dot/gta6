@@ -27,9 +27,9 @@
     <div class="controls">
       <button id="clear">Clear</button>
       <button id="undo">Undo</button>
-      <button id="download" class="primary">Sign &amp; Download</button>
+      <button id="confirm" class="primary">Confirm</button>
     </div>
-    <p class="small">When you click "Sign &amp; Download" your signature will be exported as a PNG you can save or print. No data is sent to a server.</p>
+    <p class="small">When you click "Confirm" your signature will be accepted locally. No data is sent to a server and nothing will be downloaded.</p>
     <div id="signed" class="signed"></div>
   </div>
 
@@ -95,20 +95,20 @@
     document.getElementById('clear').addEventListener('click', ()=>{ paths.length=0; currentPath=[]; draw(); document.getElementById('signed').innerHTML=''; });
     document.getElementById('undo').addEventListener('click', ()=>{ paths.pop(); draw(); });
 
-    document.getElementById('download').addEventListener('click', ()=>{
-      if(paths.length===0){ if(!confirm('No signature detected. Do you still want to proceed?')) return; }
-      const dataUrl = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = 'signature.png';
-      link.click();
-
-      const img = document.createElement('img');
-      img.src = dataUrl;
-      img.style.maxWidth='100%';
+    document.getElementById('confirm').addEventListener('click', ()=>{
+      if(paths.length===0){ if(!confirm('No signature detected. Do you still want to confirm?')) return; }
+      // Show a simple thank-you message; no download
       const signedDiv = document.getElementById('signed');
-      signedDiv.innerHTML = '<strong>Signed:</strong>';
-      signedDiv.appendChild(img);
+      signedDiv.innerHTML = '<strong>Thank you.</strong>';
+      // Optionally show a preview of the signature (kept local, not uploaded)
+      try{
+        const dataUrl = canvas.toDataURL('image/png');
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.style.maxWidth='100%';
+        img.style.marginTop='8px';
+        signedDiv.appendChild(img);
+      }catch(e){ /* ignore */ }
     });
 
     // initialize blank canvas background
