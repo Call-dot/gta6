@@ -21,7 +21,7 @@
   <h1>Signing Agreement</h1>
   <p class="notice">Callum is no responsible for any harm for going on the bed. If you agree, please sign here.</p>
 
-  <div class="canvas-wrap">
+  <div id="canvasWrap" class="canvas-wrap">
     <label class="small">Signature area (draw with mouse, touch, or stylus):</label>
     <canvas id="sig" width="800" height="200"></canvas>
     <div class="controls">
@@ -37,6 +37,7 @@
     // Simple signature pad implementation with undo
     const canvas = document.getElementById('sig');
     const ctx = canvas.getContext('2d');
+    const canvasWrap = document.getElementById('canvasWrap');
     let drawing = false;
     let currentPath = [];
     const paths = [];
@@ -68,6 +69,7 @@
       // only push if there are points
       if (currentPath.length) paths.push(currentPath.slice());
       currentPath = [];
+      draw();
     }
 
     function draw(){
@@ -103,6 +105,7 @@
       // If a stroke is in progress, cancel the current stroke
       if (currentPath && currentPath.length) {
         currentPath = [];
+        drawing = false;
         draw();
         return;
       }
@@ -115,18 +118,8 @@
 
     document.getElementById('confirm').addEventListener('click', ()=>{
       if(paths.length===0){ if(!confirm('No signature detected. Do you still want to confirm?')) return; }
-      // Show a simple thank-you message; no download
-      const signedDiv = document.getElementById('signed');
-      signedDiv.innerHTML = '<strong>Thank you.</strong>';
-      // Optionally show a preview of the signature (kept local, not uploaded)
-      try{
-        const dataUrl = canvas.toDataURL('image/png');
-        const img = document.createElement('img');
-        img.src = dataUrl;
-        img.style.maxWidth='100%';
-        img.style.marginTop='8px';
-        signedDiv.appendChild(img);
-      }catch(e){ /* ignore */ }
+      // Replace the whole signing area with a simple thank-you message (no download, nothing uploaded)
+      canvasWrap.innerHTML = '<div style="padding:18px;text-align:center;"><strong>Thank you.</strong></div>';
     });
 
     // initialize blank canvas background
