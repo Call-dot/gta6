@@ -3,265 +3,402 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Signing Agreement</title>
+  <title>Kiosk Signing (Tablet)</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;color:#111}
-    .page{max-width:900px;margin:24px auto;padding:0 20px}
-    h1{font-size:1.6rem;margin-bottom:0.2rem}
-    p.notice{background:#fff8e1;border-left:4px solid #ffd54f;padding:12px;border-radius:6px}
-    .canvas-wrap{border:1px solid #ddd;padding:12px;border-radius:8px;margin-top:16px;background:#fafafa;box-sizing:border-box}
-    canvas{display:block;background:#fff;border:1px dashed #ccc;width:100%;height:200px;touch-action:none}
-    .controls{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
-    button{padding:8px 12px;border-radius:6px;border:1px solid #bbb;background:#f6f6f6;cursor:pointer}
-    button.primary{background:#0366d6;color:white;border-color:#0356b0}
-    .signed{margin-top:16px}
-    .small{font-size:0.9rem;color:#555}
-    :fullscreen .canvas-wrap, :-webkit-full-screen .canvas-wrap { width:100vw; height:100vh; margin:0; border-radius:0; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:18px; box-sizing:border-box; }
-    :fullscreen canvas, :-webkit-full-screen canvas { width:100%; height:60vh; max-height:80vh; }
-    .start-wrap{margin-top:12px;text-align:center}
-    .meta-row{display:flex;gap:12px;align-items:center;margin-top:12px}
-    .meta-row input[type="text"]{padding:6px 8px;border-radius:6px;border:1px solid #ccc}
-    .final-card{max-width:720px;margin:20px auto;padding:16px;border:1px solid #e6e6e6;border-radius:8px;background:#fff}
-    .signature-image{display:block;margin-top:12px;max-width:100%}
-    .cancel-note{margin-top:12px;color:#b00}
-
-    /* Pseudo-fullscreen: used on load to present a fullscreen-like signing area without calling the Fullscreen API */
-    .pseudo-full{position:fixed;inset:0;background:#fafafa;z-index:9999;padding:18px;display:flex;flex-direction:column;justify-content:center;align-items:center}
-    .pseudo-full canvas{height:60vh;max-height:80vh}
-
-    /* Confirmation overlay shown after Confirm; does not exit fullscreen and keeps canvas visible behind it */
-    .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:10000}
-    .overlay .box{background:white;padding:20px;border-radius:8px;max-width:90%;text-align:center}
+    :root{
+      --accent:#0b66d0;
+      --bg:#f7f8fa;
+      --card:#ffffff;
+      --muted:#6b7280;
+      --danger:#b91c1c;
+    }
+    html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:#111}
+    .center{display:flex;align-items:center;justify-content:center}
+    .pseudo-full{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
+    .container{width:100%;max-width:980px;background:var(--card);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.08);padding:18px;box-sizing:border-box}
+    header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    header h1{margin:0;font-size:1.25rem}
+    .muted{color:var(--muted);font-size:0.95rem}
+    /* Start screen */
+    #startScreen{display:flex;flex-direction:column;align-items:center;gap:12px;padding:28px}
+    #countdown{font-size:3.5rem;font-weight:700;color:var(--accent)}
+    .btn{Padding:12px 18px;border-radius:10px;border:0;background:var(--accent);color:white;font-weight:600;cursor:pointer}
+    .btn.ghost{background:transparent;color:var(--accent);border:1px solid rgba(11,102,208,0.14)}
+    /* Signing area */
+    .meta{display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap}
+    .meta label{font-size:0.95rem}
+    input[type="text"]{padding:10px;border-radius:8px;border:1px solid #e5e7eb;font-size:1rem;min-width:220px}
+    .canvas-wrap{margin-top:14px;border-radius:10px;padding:12px;border:1px solid #e6e9ef;background:#fbfdff}
+    canvas{display:block;width:100%;height:42vh;border-radius:6px;background:white;border:1px dashed #d1d5db;touch-action:none}
+    .controls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+    .controls button{padding:10px 14px;border-radius:8px;border:1px solid #d1d5db;background:white;cursor:pointer}
+    .controls button.primary{background:var(--accent);color:white;border-color:var(--accent)}
+    .small{font-size:0.9rem;color:var(--muted)}
+    .overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:9999}
+    .overlay .box{background:white;padding:28px;border-radius:10px;text-align:center;min-width:240px}
+    .consent{display:flex;align-items:center;gap:8px}
+    .footer{margin-top:12px;font-size:0.9rem;color:var(--muted);text-align:center}
+    @media (orientation:portrait){
+      canvas{height:34vh}
+    }
   </style>
 </head>
 <body>
-  <div class="page" id="page">
-    <h1>Signing Agreement</h1>
-    <p class="notice">Callum is no responsible for any harm for going on the bed. If you agree, please sign here.</p>
+  <div class="pseudo-full center" id="pseudoFullWrap" aria-hidden="false">
+    <div class="container" role="application" aria-label="Kiosk signing">
+      <header>
+        <div>
+          <h1>Bank Signing Kiosk</h1>
+          <div class="muted">Please wait for the next session or press Start now</div>
+        </div>
+        <div class="muted" id="sessionClock" aria-live="polite"></div>
+      </header>
 
-    <div id="canvasWrap" class="canvas-wrap" aria-live="polite">
-      <div class="meta-row">
-        <label class="small">Name:</label>
-        <input id="signerName" type="text" placeholder="Enter your full name" aria-label="Signer name" />
-        <div class="small" id="signedDate">Date: —</div>
+      <!-- START SCREEN -->
+      <div id="startScreen" aria-hidden="false">
+        <div id="countdown" aria-live="assertive">15</div>
+        <div class="muted">Next session starts in</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="startNow" class="btn">Start now</button>
+          <button id="enterFs" class="btn ghost">Enter Fullscreen (optional)</button>
+        </div>
+        <div class="small" style="margin-top:6px">Tablet mode — touch to sign. The session will reset automatically after each signing.</div>
       </div>
 
-      <canvas id="sig" width="1200" height="400" role="img" aria-label="Signature pad"></canvas>
+      <!-- SIGNING UI (hidden until countdown ends or Start now) -->
+      <div id="signingUI" style="display:none" aria-hidden="true">
+        <div class="meta">
+          <label>
+            Full name (required)<br />
+            <input id="fullName" type="text" inputmode="text" autocomplete="name" placeholder="Jane Q. Customer" />
+          </label>
+          <label class="consent">
+            <input id="consent" type="checkbox" />
+            <span>I consent to sign electronically</span>
+          </label>
+          <div id="status" class="small" style="margin-left:auto">Ready</div>
+        </div>
 
-      <div class="start-wrap">
-        <button id="enterFs" class="primary">Enter Fullscreen (optional)</button>
+        <div class="canvas-wrap" aria-hidden="false">
+          <canvas id="sigCanvas" width="1440" height="480" role="img" aria-label="Signature pad"></canvas>
+          <div class="controls">
+            <button id="undoBtn">Undo</button>
+            <button id="clearBtn">Clear</button>
+            <button id="confirmBtn" class="primary" disabled>Confirm (Sign)</button>
+            <button id="backBtn" class="ghost">Cancel</button>
+          </div>
+          <div class="small" style="margin-top:8px">Draw your signature with finger or stylus. Name and consent required before confirming.</div>
+        </div>
+
+        <div class="footer">When you confirm, a receipt appears briefly; the kiosk will then reset for the next user.</div>
       </div>
 
-      <div id="controlsRow" class="controls" style="margin-top:12px;display:none;">
-        <button id="clear">Clear</button>
-        <button id="undo">Undo</button>
-        <button id="confirm" class="primary">Confirm</button>
-      </div>
-
-      <p class="small">Signing happens locally in your browser. After Confirm a non-blocking confirmation overlay is shown; the signing UI remains visible but disabled. No data is uploaded to any server.</p>
-      <div id="signed" class="signed"></div>
-      <div id="cancelInfo" class="cancel-note" style="display:none;">Signing cancelled. Reload the page to try again.</div>
     </div>
-
-    <div id="finalPreview" style="display:none;" class="final-card" aria-hidden="true"></div>
   </div>
 
-  <div id="confirmOverlay" style="display:none;" class="overlay" aria-hidden="true">
-    <div class="box"><strong>Thank you.</strong><div class="small" style="margin-top:8px">Your signature has been recorded locally. You may remain in fullscreen.</div></div>
+  <!-- Thank-you overlay (shown on confirm) -->
+  <div id="thankOverlay" class="overlay" aria-hidden="true">
+    <div class="box">
+      <div style="font-size:1.5rem;font-weight:700">Thank you.</div>
+      <div class="small" style="margin-top:8px">Your signature has been captured. Please wait...</div>
+    </div>
   </div>
 
   <script>
-    // Behavior: On load we enter a pseudo-fullscreen layout (no Fullscreen API call). We do NOT force the browser's fullscreen API.
-    // The "Enter Fullscreen (optional)" button requests real fullscreen if the user wants it.
-    // Confirm shows an overlay but does NOT exit fullscreen; signing is disabled after Confirm.
+    // Kiosk signing logic (no persistence, local-only)
+    (function(){
+      // Elements
+      const startScreen = document.getElementById('startScreen');
+      const signingUI = document.getElementById('signingUI');
+      const countdownEl = document.getElementById('countdown');
+      const startNowBtn = document.getElementById('startNow');
+      const enterFsBtn = document.getElementById('enterFs');
+      const fullName = document.getElementById('fullName');
+      const consent = document.getElementById('consent');
+      const status = document.getElementById('status');
+      const confirmBtn = document.getElementById('confirmBtn');
+      const undoBtn = document.getElementById('undoBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const backBtn = document.getElementById('backBtn');
+      const thankOverlay = document.getElementById('thankOverlay');
 
-    const STORAGE_KEY = 'gta6.localSignature.v1';
-    // Reset saved signature on this run
-    try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+      const canvas = document.getElementById('sigCanvas');
+      const ctx = canvas.getContext('2d');
 
-    const canvas = document.getElementById('sig');
-    const ctx = canvas.getContext('2d');
-    const canvasWrap = document.getElementById('canvasWrap');
-    const enterFs = document.getElementById('enterFs');
-    const controlsRow = document.getElementById('controlsRow');
-    const signerNameEl = document.getElementById('signerName');
-    const signedDateEl = document.getElementById('signedDate');
-    const finalPreview = document.getElementById('finalPreview');
-    const confirmOverlay = document.getElementById('confirmOverlay');
-    const cancelInfo = document.getElementById('cancelInfo');
+      // Configuration per your request
+      const START_COUNTDOWN = 15; // seconds shown on start screen
+      const THANK_SHOW = 2 * 1000; // ms to show thank you before reset
+      let countdown = START_COUNTDOWN;
+      let countdownInterval = null;
 
-    let drawing = false;
-    let currentStroke = [];
-    const strokes = [];
-    let signingEnabled = false;
-    let signed = false;
+      // Signature data
+      let drawing = false;
+      let currentStroke = [];
+      let strokes = [];
 
-    function setDateNow(){
-      const d = new Date();
-      signedDateEl.textContent = 'Date: ' + d.toLocaleString();
-    }
-    setDateNow();
-
-    // Map pointer coordinates into canvas backing pixels
-    function getCanvasPoint(e){
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      const clientX = (e.clientX !== undefined) ? e.clientX : (e.touches && e.touches[0] && e.touches[0].clientX);
-      const clientY = (e.clientY !== undefined) ? e.clientY : (e.touches && e.touches[0] && e.touches[0].clientY);
-      const x = (clientX - rect.left) * scaleX;
-      const y = (clientY - rect.top) * scaleY;
-      const pressure = (e.pressure === undefined ? 0.5 : Math.max(0.01, e.pressure));
-      return {x, y, p: pressure, t: Date.now()};
-    }
-
-    // Pointer events
-    canvas.addEventListener('pointerdown', (e) => {
-      if (!signingEnabled) return;
-      e.preventDefault();
-      canvas.setPointerCapture(e.pointerId);
-      drawing = true;
-      currentStroke = [];
-      currentStroke.push(getCanvasPoint(e));
-      drawAll();
-    });
-    canvas.addEventListener('pointermove', (e) => {
-      if (!drawing || !signingEnabled) return;
-      e.preventDefault();
-      currentStroke.push(getCanvasPoint(e));
-      drawAll();
-    });
-    canvas.addEventListener('pointerup', (e) => {
-      if (!signingEnabled) return;
-      if (drawing) {
-        drawing = false;
-        if (currentStroke.length) {
-          strokes.push(currentStroke.slice());
-          currentStroke = [];
-          drawAll();
+      // Helpers: high-DPI sizing; we will draw in backing pixels and map pointers accordingly
+      function fitCanvasToDisplay() {
+        const rect = canvas.getBoundingClientRect();
+        const ratio = window.devicePixelRatio || 1;
+        const w = Math.max(800, Math.floor(rect.width * ratio));
+        const h = Math.max(240, Math.floor(rect.height * ratio));
+        const oldW = canvas.width || w;
+        const oldH = canvas.height || h;
+        if ((oldW !== w) || (oldH !== h)) {
+          const sx = w / (oldW || w);
+          const sy = h / (oldH || h);
+          // scale existing strokes so they remain visually consistent
+          for (const s of strokes) {
+            for (const p of s) { p.x *= sx; p.y *= sy; }
+          }
+          if (currentStroke.length) {
+            for (const p of currentStroke) { p.x *= sx; p.y *= sy; }
+          }
         }
+        canvas.width = w;
+        canvas.height = h;
+        // use identity transform (we draw in backing pixels)
+        ctx.setTransform(1,0,0,1,0,0);
+        // white background
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+        drawAll();
       }
-      try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
-    });
-    canvas.addEventListener('pointercancel', (e) => {
-      if (!signingEnabled) return;
-      drawing = false;
-      currentStroke = [];
-      drawAll();
-    });
 
-    // Backing-size handling and preserving strokes
-    function fitCanvasToDisplay() {
-      const rect = canvas.getBoundingClientRect();
-      const ratio = window.devicePixelRatio || 1;
-      const newW = Math.max(600, Math.floor(rect.width * ratio));
-      const newH = Math.max(200, Math.floor(rect.height * ratio * 0.6));
-      const oldW = canvas.width || newW;
-      const oldH = canvas.height || newH;
-      if (oldW && oldH && (oldW !== newW || oldH !== newH)) {
-        const sx = newW / oldW;
-        const sy = newH / oldH;
-        for (let s of strokes) { for (let pt of s) { pt.x *= sx; pt.y *= sy; } }
-        if (currentStroke && currentStroke.length) { for (let pt of currentStroke) { pt.x *= sx; pt.y *= sy; } }
+      function getCanvasPoint(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const clientX = (e.clientX !== undefined) ? e.clientX : (e.touches && e.touches[0] && e.touches[0].clientX);
+        const clientY = (e.clientY !== undefined) ? e.clientY : (e.touches && e.touches[0] && e.touches[0].clientY);
+        return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY, p: (e.pressure || 0.5), t: Date.now() };
       }
-      canvas.width = newW;
-      canvas.height = newH;
-      ctx.setTransform(1,0,0,1,0,0);
-      drawAll();
-    }
 
-    function drawStrokeSmooth(path, context) {
-      if (!path || path.length === 0) return;
-      if (path.length === 1) {
-        const pt = path[0];
-        context.beginPath(); context.arc(pt.x, pt.y, 2, 0, Math.PI*2); context.fill(); return;
+      // Simple smoothing: quadratic mid-point curves
+      function drawStrokeSmooth(path, context) {
+        if (!path || path.length === 0) return;
+        if (path.length === 1) {
+          const pt = path[0];
+          context.beginPath(); context.arc(pt.x, pt.y, 2, 0, Math.PI*2); context.fill(); return;
+        }
+        context.beginPath();
+        for (let i=0;i<path.length-1;i++){
+          const p0 = path[i], p1 = path[i+1];
+          const midX = (p0.x + p1.x)/2, midY = (p0.y + p1.y)/2;
+          if (i===0) context.moveTo(p0.x, p0.y);
+          context.lineWidth = Math.max(1.5, 2.2 * (p1.p || 0.5));
+          context.quadraticCurveTo(p0.x, p0.y, midX, midY);
+        }
+        const last = path[path.length-1]; context.lineTo(last.x, last.y); context.stroke();
       }
-      context.beginPath();
-      for (let i = 0; i < path.length - 1; i++) {
-        const p0 = path[i], p1 = path[i+1];
-        const midX = (p0.x + p1.x) / 2; const midY = (p0.y + p1.y) / 2;
-        if (i === 0) context.moveTo(p0.x, p0.y);
-        const w = Math.max(1.5, 2.5 * ((p1.p || 0.5)));
-        context.lineWidth = w;
-        context.quadraticCurveTo(p0.x, p0.y, midX, midY);
+
+      function drawAll(){
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#111';
+        for (const s of strokes) drawStrokeSmooth(s, ctx);
+        drawStrokeSmooth(currentStroke, ctx);
       }
-      const last = path[path.length-1]; context.lineTo(last.x, last.y); context.stroke();
-    }
 
-    function drawAll() {
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
-      for (const s of strokes) drawStrokeSmooth(s, ctx);
-      drawStrokeSmooth(currentStroke, ctx);
-    }
+      // Pointer event handlers
+      canvas.addEventListener('pointerdown', (e) => {
+        if (!signingVisible()) return;
+        e.preventDefault();
+        canvas.setPointerCapture(e.pointerId);
+        drawing = true;
+        currentStroke = [];
+        currentStroke.push(getCanvasPoint(e));
+        drawAll();
+        updateConfirmState();
+      });
+      canvas.addEventListener('pointermove', (e) => {
+        if (!drawing || !signingVisible()) return;
+        e.preventDefault();
+        currentStroke.push(getCanvasPoint(e));
+        drawAll();
+        updateConfirmState();
+      });
+      canvas.addEventListener('pointerup', (e) => {
+        if (!signingVisible()) return;
+        if (drawing) {
+          drawing = false;
+          if (currentStroke.length) {
+            strokes.push(currentStroke.slice());
+            currentStroke = [];
+            drawAll();
+          }
+        }
+        try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+        updateConfirmState();
+      });
+      canvas.addEventListener('pointercancel', () => { drawing=false; currentStroke=[]; drawAll(); updateConfirmState(); });
 
-    document.getElementById('clear').addEventListener('click', ()=>{ if(!signingEnabled) return; strokes.length=0; currentStroke=[]; drawAll(); document.getElementById('signed').innerHTML=''; });
-    document.getElementById('undo').addEventListener('click', ()=>{ if(!signingEnabled) return; if (currentStroke && currentStroke.length) { currentStroke=[]; drawing=false; drawAll(); return; } if (strokes.length>0) { strokes.pop(); drawAll(); } });
+      // Controls
+      undoBtn.addEventListener('click', ()=>{
+        if (!signingVisible()) return;
+        if (currentStroke.length) { currentStroke = []; drawing=false; drawAll(); updateConfirmState(); return; }
+        if (strokes.length) strokes.pop();
+        drawAll();
+        updateConfirmState();
+      });
+      clearBtn.addEventListener('click', ()=>{
+        if (!signingVisible()) return;
+        strokes = []; // reassign won't work for const; instead clear manually:
+        // but strokes is const, so clear:
+        while(strokes.length) strokes.pop();
+        currentStroke = [];
+        drawAll();
+        updateConfirmState();
+      });
+      backBtn.addEventListener('click', ()=>{
+        // Cancel current session and go back to start screen and restart countdown
+        if (thankVisible()) return;
+        stopSigningSession();
+        showStartScreen();
+      });
 
-    function createPreviewDataUrl() {
-      const rect = canvas.getBoundingClientRect();
-      const previewW = Math.max(600, Math.floor(rect.width));
-      const previewH = Math.max(200, Math.floor(rect.height * 0.6)) + 80;
-      const pcanvas = document.createElement('canvas'); pcanvas.width = previewW; pcanvas.height = previewH;
-      const pctx = pcanvas.getContext('2d'); pctx.fillStyle='#fff'; pctx.fillRect(0,0,pcanvas.width,pcanvas.height);
-      const scaleX = pcanvas.width / canvas.width; const scaleY = (pcanvas.height - 80) / canvas.height;
-      pctx.save(); pctx.scale(scaleX, scaleY); pctx.lineJoin='round'; pctx.lineCap='round'; pctx.strokeStyle='#111';
-      for (const s of strokes) drawStrokeSmooth(s, pctx);
-      pctx.restore(); pctx.fillStyle='#000'; pctx.font='16px sans-serif'; const name=(signerNameEl.value||'').trim()||'—'; pctx.fillText('Name: '+name,10,pcanvas.height-48); pctx.fillText('Date: '+new Date().toLocaleString(),10,pcanvas.height-24);
-      return pcanvas.toDataURL('image/png');
-    }
+      // Confirm (Sign)
+      confirmBtn.addEventListener('click', async ()=>{
+        if (!signingVisible()) return;
+        if (!canConfirm()) return;
+        // Lock UI
+        disableSigningInputs();
+        // Show thank-you overlay for 2 seconds
+        showThankOverlay();
+        // After THANK_SHOW ms, reset to start screen
+        setTimeout(()=>{
+          hideThankOverlay();
+          resetKioskSession();
+          showStartScreen();
+        }, THANK_SHOW);
+      });
 
-    function saveLocalState(dataUrl){ try{ const payload={name:signerNameEl.value||'',date:new Date().toISOString(),image:dataUrl||null}; localStorage.setItem(STORAGE_KEY,JSON.stringify(payload)); }catch(e){} }
-
-    document.getElementById('confirm').addEventListener('click', async ()=>{
-      if (!signingEnabled) return;
-      if (strokes.length===0){ if(!confirm('No signature detected. Do you still want to confirm?')) return; }
-      const dataUrl = createPreviewDataUrl();
-      saveLocalState(dataUrl);
-      signed = true; signingEnabled = false;
-      // Show non-blocking overlay but DO NOT exit fullscreen; keep the signing UI visible (but disabled)
-      confirmOverlay.style.display = 'flex'; confirmOverlay.setAttribute('aria-hidden','false');
-      // show small inline thank-you text
-      document.getElementById('signed').innerHTML = '<strong>Thank you.</strong>';
-    });
-
-    // Enter real fullscreen only when user clicks; we do NOT request fullscreen on load
-    enterFs.addEventListener('click', async ()=>{
-      if (signed) return;
-      const el = canvasWrap;
-      try{
-        if (el.requestFullscreen) await el.requestFullscreen(); else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-        // enable signing and controls when user has explicitly entered or attempted fullscreen
-        signingEnabled = true; controlsRow.style.display='flex'; enterFs.style.display='none'; fitCanvasToDisplay();
-      }catch(e){ signingEnabled=true; controlsRow.style.display='flex'; enterFs.style.display='none'; fitCanvasToDisplay(); }
-    });
-
-    // Pseudo-fullscreen on load (does not call requestFullscreen). This makes the UI appear fullscreen but doesn't use Fullscreen API.
-    function enablePseudoFullscreen(){
-      document.body.classList.add('pseudo-applied');
-      canvasWrap.classList.add('pseudo-full');
-      // show controls inline (since we're making it fullscreen-like on load)
-      signingEnabled = true; controlsRow.style.display='flex'; enterFs.style.display='inline-block';
-      fitCanvasToDisplay();
-    }
-
-    // If user exits real fullscreen prematurely, we cancel signing (maintain one-time nature)
-    document.addEventListener('fullscreenchange', ()=>{
-      if (!document.fullscreenElement && !signed && signingEnabled) {
-        signingEnabled = false; controlsRow.style.display='none'; enterFs.style.display='none'; cancelInfo.style.display='block';
+      // Helpers for UI state
+      function signingVisible(){ return signingUI.style.display !== 'none' && !signedOut; }
+      let signedOut = false;
+      function disableSigningInputs(){
+        fullName.disabled = true;
+        consent.disabled = true;
+        confirmBtn.disabled = true;
+        undoBtn.disabled = true;
+        clearBtn.disabled = true;
+        backBtn.disabled = true;
+        signedOut = true;
       }
-    });
+      function enableSigningInputs(){
+        fullName.disabled = false;
+        consent.disabled = false;
+        confirmBtn.disabled = true;
+        undoBtn.disabled = false;
+        clearBtn.disabled = false;
+        backBtn.disabled = false;
+        signedOut = false;
+      }
 
-    window.addEventListener('resize', ()=>{ fitCanvasToDisplay(); });
+      function canConfirm(){
+        const nameOk = (fullName.value || '').trim().length > 0;
+        const consentOk = consent.checked;
+        const hasStroke = strokes.length > 0;
+        return nameOk && consentOk && hasStroke;
+      }
 
-    // init: enable pseudo-fullscreen but DO NOT force real fullscreen
-    function init(){
-      enablePseudoFullscreen();
-      // ensure old saved state removed; nothing shown from prior sessions
-      try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
-    }
-    init();
+      function updateConfirmState(){
+        confirmBtn.disabled = !canConfirm();
+        // status text
+        if (!signingVisible()) { status.textContent = ''; return; }
+        if (!fullName.value.trim()) status.textContent = 'Enter name';
+        else if (!consent.checked) status.textContent = 'Consent required';
+        else if (strokes.length === 0 && currentStroke.length === 0) status.textContent = 'Sign in the box';
+        else status.textContent = 'Ready to confirm';
+      }
+
+      // Start screen countdown logic
+      function startCountdown(){
+        countdown = START_COUNTDOWN;
+        countdownEl.textContent = String(countdown);
+        clearInterval(countdownInterval);
+        countdownInterval = setInterval(()=>{
+          countdown--;
+          countdownEl.textContent = String(countdown);
+          if (countdown <= 0){
+            clearInterval(countdownInterval);
+            startSigningSession();
+          }
+        }, 1000);
+      }
+      startNowBtn.addEventListener('click', ()=>{
+        clearInterval(countdownInterval);
+        startSigningSession();
+      });
+
+      // Enter real fullscreen if user wants
+      enterFsBtn.addEventListener('click', async ()=>{
+        try {
+          if (canvasWrap.requestFullscreen) await canvasWrap.requestFullscreen();
+        } catch(e) {}
+      });
+
+      // Session transitions
+      function showStartScreen(){
+        startScreen.style.display = '';
+        signingUI.style.display = 'none';
+        // clear any signing state
+        resetKioskSession();
+        // restart countdown
+        startCountdown();
+      }
+      function startSigningSession(){
+        startScreen.style.display = 'none';
+        signingUI.style.display = '';
+        enableSigningInputs();
+        fitCanvasToDisplay();
+        updateConfirmState();
+      }
+      function stopSigningSession(){
+        // hide signing UI
+        signingUI.style.display = 'none';
+        startScreen.style.display = '';
+        enableSigningInputs();
+      }
+
+      // Thank overlay
+      function showThankOverlay(){
+        thankOverlay.style.display = 'flex';
+        thankOverlay.setAttribute('aria-hidden','false');
+      }
+      function hideThankOverlay(){
+        thankOverlay.style.display = 'none';
+        thankOverlay.setAttribute('aria-hidden','true');
+      }
+
+      // reset the current kiosk session (clear inputs and strokes)
+      function resetKioskSession(){
+        // clear signature
+        while(strokes.length) strokes.pop();
+        currentStroke = [];
+        drawAll();
+        fullName.value = '';
+        consent.checked = false;
+        signedOut = false;
+        enableSigningInputs();
+        updateConfirmState();
+      }
+
+      // initial state: show start screen and begin countdown
+      showStartScreen();
+
+      // resize handling
+      window.addEventListener('resize', ()=> {
+        fitCanvasToDisplay();
+      });
+
+      // On-page focus/visibility changes: keep behavior simple (no persistence); if tab is hidden, we keep countdown running
+      // done
+
+    })();
   </script>
 </body>
 </html>
