@@ -57,6 +57,12 @@
 
   <script>
     // Fixed signature pad: pointer->canvas-pixel mapping so fullscreen coordinates match drawing.
+    // This version also resets any previously saved local signature on load (per user request).
+    const STORAGE_KEY = 'gta6.localSignature.v1';
+
+    // Reset previous saved signature state
+    try { localStorage.removeItem(STORAGE_KEY); } catch(e) { /* ignore */ }
+
     const canvas = document.getElementById('sig');
     const ctx = canvas.getContext('2d');
     const canvasWrap = document.getElementById('canvasWrap');
@@ -82,7 +88,6 @@
     // Map pointer coordinates into canvas backing pixels (so drawing stays aligned regardless of CSS scaling)
     function getCanvasPoint(e){
       const rect = canvas.getBoundingClientRect();
-      // canvas.width/height are backing pixels; rect.width/height are CSS pixels
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
       const clientX = (e.clientX !== undefined) ? e.clientX : (e.touches && e.touches[0] && e.touches[0].clientX);
@@ -132,10 +137,8 @@
     function fitCanvasToDisplay() {
       const rect = canvas.getBoundingClientRect();
       const ratio = window.devicePixelRatio || 1;
-      // new backing size in pixels
       const newW = Math.max(600, Math.floor(rect.width * ratio));
       const newH = Math.max(200, Math.floor(rect.height * ratio * 0.6));
-      // scale existing strokes from old backing size to new backing size
       const oldW = canvas.width || newW;
       const oldH = canvas.height || newH;
       if (oldW && oldH && (oldW !== newW || oldH !== newH)) {
@@ -150,7 +153,6 @@
       }
       canvas.width = newW;
       canvas.height = newH;
-      // use identity transform; we are drawing in backing pixels
       ctx.setTransform(1,0,0,1,0,0);
       drawAll();
     }
@@ -181,7 +183,6 @@
     }
 
     function drawAll() {
-      // clear using backing pixel sizes
       ctx.clearRect(0,0,canvas.width,canvas.height);
       ctx.fillStyle = '#fff';
       ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -218,7 +219,6 @@
 
     // Create preview by scaling backing-pixel strokes into a preview canvas
     function createPreviewDataUrl() {
-      // preview size in CSS pixels (use current rect width)
       const rect = canvas.getBoundingClientRect();
       const previewW = Math.max(600, Math.floor(rect.width));
       const previewH = Math.max(200, Math.floor(rect.height * 0.6)) + 80;
@@ -229,7 +229,6 @@
       pctx.fillStyle = '#fff';
       pctx.fillRect(0,0,pcanvas.width,pcanvas.height);
 
-      // compute scale from backing pixels to preview pixels
       const scaleX = pcanvas.width / canvas.width;
       const scaleY = (pcanvas.height - 80) / canvas.height;
 
@@ -239,13 +238,11 @@
       pctx.lineCap = 'round';
       pctx.strokeStyle = '#111';
 
-      // draw strokes scaled by transform
       for (const s of strokes) {
         drawStrokeSmooth(s, pctx);
       }
       pctx.restore();
 
-      // metadata
       pctx.fillStyle = '#000';
       pctx.font = '16px sans-serif';
       const name = (signerNameEl.value || '').trim() || '—';
@@ -262,7 +259,7 @@
           date: new Date().toISOString(),
           image: finalImageDataUrl || null
         };
-        localStorage.setItem('gta6.localSignature.v1', JSON.stringify(payload));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       } catch(e){ /* ignore */ }
     }
 
@@ -276,12 +273,10 @@
       signed = true;
       signingEnabled = false;
 
-      // exit fullscreen if active
       if (document.fullscreenElement === canvasWrap) {
         try { await document.exitFullscreen(); } catch(e) {}
       }
 
-      // show final preview and hide signing UI
       finalPreview.innerHTML = '';
       const title = document.createElement('div');
       title.innerHTML = '<strong>Thank you.</strong>';
@@ -314,7 +309,6 @@
         startFull.style.display = 'none';
         fitCanvasToDisplay();
       } catch (err) {
-        // fallback to inline signing
         signingEnabled = true;
         controlsRow.style.display = 'flex';
         startFull.style.display = 'none';
@@ -333,20 +327,20 @@
     });
 
     window.addEventListener('resize', () => {
-      // when fullscreen or resized, fit backing and preserve strokes
       fitCanvasToDisplay();
     });
 
     // Load previous local state if present
     function loadLocalState() {
       try {
-        const raw = localStorage.getItem('gta6.localSignature.v1');
+        const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return null;
         return JSON.parse(raw);
       } catch(e){ return null; }
     }
 
     function init() {
+      // we already cleared saved state at top; proceed normally
       fitCanvasToDisplay();
       const prev = loadLocalState();
       if (prev && prev.image) {
