@@ -62,7 +62,7 @@
           <button id="startBtn" class="btn">Start</button>
           <button id="enterFs" class="btn ghost">Enter Fullscreen (optional)</button>
         </div>
-        <div class="small" style="margin-top:6px">Tablet mode — touch to sign. After pressing Start you will have 15 seconds to complete the signature.</div>
+        <div class="small" style="margin-top:6px">Tablet mode — touch to sign. After pressing Start you will have 15 seconds to complete the signature unless you keep moving.</div>
       </div>
 
       <!-- SIGNING UI (hidden until Start pressed) -->
@@ -87,7 +87,7 @@
             <button id="confirmBtn" class="primary" disabled>Confirm (Sign)</button>
             <button id="cancelBtn" class="ghost">Cancel</button>
           </div>
-          <div class="small" style="margin-top:8px">You have 15 seconds to sign. Name and consent required before confirming.</div>
+          <div class="small" style="margin-top:8px">You have 15 seconds of inactivity before the session times out. Any movement resets the 15-second timer.</div>
         </div>
 
         <div class="footer">When you confirm, a receipt appears for 2 seconds; the kiosk will then reset for the next user.</div>
@@ -125,10 +125,11 @@
       const ctx = canvas.getContext('2d');
 
       // Configuration per your request
-      const SIGNING_TIME = 15; // seconds allocated for signing after Start
+      const SIGNING_TIME = 15; // seconds of inactivity before timeout
       const THANK_SHOW = 2 * 1000; // ms to show thank you before reset
       let signCountdown = SIGNING_TIME;
       let signInterval = null;
+      let signTimeout = null;
 
       // Signature data
       let drawing = false;
@@ -199,6 +200,28 @@
         drawStrokeSmooth(currentStroke, ctx);
       }
 
+      // Inactivity timer helpers: reset timer on movement
+      function clearSigningTimers(){
+        if (signInterval) { clearInterval(signInterval); signInterval = null; }
+        if (signTimeout) { clearTimeout(signTimeout); signTimeout = null; }
+      }
+      function resetSigningTimer(){
+        // reset countdown and restart interval + timeout
+        signCountdown = SIGNING_TIME;
+        signTimerEl.textContent = signCountdown + 's';
+        clearSigningTimers();
+        signInterval = setInterval(()=>{
+          signCountdown--;
+          signTimerEl.textContent = (signCountdown>0? signCountdown + 's' : '0s');
+        }, 1000);
+        signTimeout = setTimeout(()=>{
+          // no movement for SIGNING_TIME seconds -> timeout
+          clearSigningTimers();
+          disableSigningInputs();
+          showTimeoutOverlayAndReset();
+        }, SIGNING_TIME * 1000);
+      }
+
       // Pointer events
       canvas.addEventListener('pointerdown', (e) => {
         if (!isSigningActive()) return;
@@ -209,6 +232,7 @@
         currentStroke.push(getCanvasPoint(e));
         drawAll();
         updateConfirmState();
+        resetSigningTimer();
       });
       canvas.addEventListener('pointermove', (e) => {
         if (!drawing || !isSigningActive()) return;
@@ -216,6 +240,7 @@
         currentStroke.push(getCanvasPoint(e));
         drawAll();
         updateConfirmState();
+        resetSigningTimer();
       });
       canvas.addEventListener('pointerup', (e) => {
         if (!isSigningActive()) return;
@@ -225,16 +250,18 @@
         }
         try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
         updateConfirmState();
+        resetSigningTimer();
       });
-      canvas.addEventListener('pointercancel', () => { drawing=false; currentStroke=[]; drawAll(); updateConfirmState(); });
+      canvas.addEventListener('pointercancel', () => { drawing=false; currentStroke=[]; drawAll(); updateConfirmState(); resetSigningTimer(); });
 
       // Controls
       undoBtn.addEventListener('click', ()=>{
         if (!isSigningActive()) return;
-        if (currentStroke.length) { currentStroke = []; drawing=false; drawAll(); updateConfirmState(); return; }
+        if (currentStroke.length) { currentStroke = []; drawing=false; drawAll(); updateConfirmState(); resetSigningTimer(); return; }
         if (strokes.length) strokes.pop();
         drawAll();
         updateConfirmState();
+        resetSigningTimer();
       });
       clearBtn.addEventListener('click', ()=>{
         if (!isSigningActive()) return;
@@ -242,6 +269,7 @@
         currentStroke = [];
         drawAll();
         updateConfirmState();
+        resetSigningTimer();
       });
       cancelBtn.addEventListener('click', ()=>{
         // Cancel current signing session and return to start screen
@@ -253,9 +281,9 @@
       confirmBtn.addEventListener('click', ()=>{
         if (!isSigningActive()) return;
         if (!canConfirm()) return;
+        clearSigningTimers();
         disableSigningInputs();
         showThankOverlay();
-        clearInterval(signInterval);
         setTimeout(()=>{
           hideThankOverlay();
           resetKioskSession();
@@ -268,6 +296,7 @@
       let sessionLocked = false;
       function disableSigningInputs(){
         fullName.disabled = true; consent.disabled = true; confirmBtn.disabled = true; undoBtn.disabled = true; clearBtn.disabled = true; cancelBtn.disabled = true; sessionLocked = true;
+        clearSigningTimers();
       }
       function enableSigningInputs(){
         fullName.disabled = false; consent.disabled = false; confirmBtn.disabled = true; undoBtn.disabled = false; clearBtn.disabled = false; cancelBtn.disabled = false; sessionLocked = false;
@@ -283,36 +312,18 @@
       function updateConfirmState(){
         confirmBtn.disabled = !canConfirm();
         if (!isSigningActive()) { signTimerEl.textContent = '' ; return; }
-        // show time remaining in timer element
         signTimerEl.textContent = (signCountdown>0? signCountdown + 's' : '0s');
       }
 
-      // Signing countdown logic (time allocated to user after pressing Start)
-      function startSigningCountdown(){
-        signCountdown = SIGNING_TIME;
-        signTimerEl.textContent = signCountdown + 's';
-        clearInterval(signInterval);
-        signInterval = setInterval(()=>{
-          signCountdown--;
-          signTimerEl.textContent = (signCountdown>0? signCountdown + 's':'0s');
-          if (signCountdown<=0){
-            clearInterval(signInterval);
-            // time expired: cancel session, show short timeout overlay then reset
-            disableSigningInputs();
-            showTimeoutOverlayAndReset();
-          }
-        },1000);
-      }
-
+      // Timeout overlay for inactivity
       function showTimeoutOverlayAndReset(){
-        // reuse thankOverlay but change message
-        const previousText = thankOverlay.querySelector('.box').innerHTML;
-        thankOverlay.querySelector('.box').innerHTML = '<div style="font-size:1.25rem;font-weight:700">Session timed out</div><div class="small" style="margin-top:8px">Please wait while the kiosk resets.</div>';
+        const box = thankOverlay.querySelector('.box');
+        const previous = box.innerHTML;
+        box.innerHTML = '<div style="font-size:1.25rem;font-weight:700">Session timed out</div><div class="small" style="margin-top:8px">Please wait while the kiosk resets.</div>';
         thankOverlay.style.display = 'flex'; thankOverlay.setAttribute('aria-hidden','false');
         setTimeout(()=>{
           thankOverlay.style.display = 'none'; thankOverlay.setAttribute('aria-hidden','true');
-          // restore box content
-          thankOverlay.querySelector('.box').innerHTML = previousText;
+          box.innerHTML = previous;
           resetKioskSession();
           showStartScreen();
         }, 1500);
@@ -338,20 +349,20 @@
         signingUI.style.display = '';
         enableSigningInputs();
         fitCanvasToDisplay();
-        startSigningCountdown();
+        resetSigningTimer();
       }
       function stopSigningSession(){
         signingUI.style.display = 'none';
         startScreen.style.display = '';
         enableSigningInputs();
-        clearInterval(signInterval);
+        clearSigningTimers();
       }
 
       function showThankOverlay(){ thankOverlay.style.display='flex'; thankOverlay.setAttribute('aria-hidden','false'); }
       function hideThankOverlay(){ thankOverlay.style.display='none'; thankOverlay.setAttribute('aria-hidden','true'); }
 
       function resetKioskSession(){
-        while(strokes.length) strokes.pop(); currentStroke=[]; drawAll(); fullName.value=''; consent.checked=false; sessionLocked=false; enableSigningInputs(); clearInterval(signInterval); signCountdown = SIGNING_TIME; signTimerEl.textContent = '';
+        while(strokes.length) strokes.pop(); currentStroke=[]; drawAll(); fullName.value=''; consent.checked=false; sessionLocked=false; enableSigningInputs(); clearSigningTimers(); signCountdown = SIGNING_TIME; signTimerEl.textContent = '';
       }
 
       // initial state
