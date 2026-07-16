@@ -21,7 +21,7 @@
     .muted{color:var(--muted);font-size:0.95rem}
     /* Start screen */
     #startScreen{display:flex;flex-direction:column;align-items:center;gap:12px;padding:28px}
-    #countdown{font-size:3.5rem;font-weight:700;color:var(--accent)}
+    #startLabel{font-size:1.5rem;font-weight:700;color:var(--accent)}
     .btn{Padding:12px 18px;border-radius:10px;border:0;background:var(--accent);color:white;font-weight:600;cursor:pointer}
     .btn.ghost{background:transparent;color:var(--accent);border:1px solid rgba(11,102,208,0.14)}
     /* Signing area */
@@ -38,6 +38,7 @@
     .overlay .box{background:white;padding:28px;border-radius:10px;text-align:center;min-width:240px}
     .consent{display:flex;align-items:center;gap:8px}
     .footer{margin-top:12px;font-size:0.9rem;color:var(--muted);text-align:center}
+    .timerBadge{font-weight:700;color:var(--accent);font-size:1.25rem}
     @media (orientation:portrait){
       canvas{height:34vh}
     }
@@ -49,23 +50,22 @@
       <header>
         <div>
           <h1>Bank Signing Kiosk</h1>
-          <div class="muted">Please wait for the next session or press Start now</div>
+          <div class="muted">Press Start to begin session</div>
         </div>
         <div class="muted" id="sessionClock" aria-live="polite"></div>
       </header>
 
       <!-- START SCREEN -->
       <div id="startScreen" aria-hidden="false">
-        <div id="countdown" aria-live="assertive">15</div>
-        <div class="muted">Next session starts in</div>
+        <div id="startLabel">Ready to start</div>
         <div style="display:flex;gap:8px;margin-top:8px">
-          <button id="startNow" class="btn">Start now</button>
+          <button id="startBtn" class="btn">Start</button>
           <button id="enterFs" class="btn ghost">Enter Fullscreen (optional)</button>
         </div>
-        <div class="small" style="margin-top:6px">Tablet mode — touch to sign. The session will reset automatically after each signing.</div>
+        <div class="small" style="margin-top:6px">Tablet mode — touch to sign. After pressing Start you will have 15 seconds to complete the signature.</div>
       </div>
 
-      <!-- SIGNING UI (hidden until countdown ends or Start now) -->
+      <!-- SIGNING UI (hidden until Start pressed) -->
       <div id="signingUI" style="display:none" aria-hidden="true">
         <div class="meta">
           <label>
@@ -76,7 +76,7 @@
             <input id="consent" type="checkbox" />
             <span>I consent to sign electronically</span>
           </label>
-          <div id="status" class="small" style="margin-left:auto">Ready</div>
+          <div id="signTimer" class="timerBadge" style="margin-left:auto">15s</div>
         </div>
 
         <div class="canvas-wrap" aria-hidden="false">
@@ -85,12 +85,12 @@
             <button id="undoBtn">Undo</button>
             <button id="clearBtn">Clear</button>
             <button id="confirmBtn" class="primary" disabled>Confirm (Sign)</button>
-            <button id="backBtn" class="ghost">Cancel</button>
+            <button id="cancelBtn" class="ghost">Cancel</button>
           </div>
-          <div class="small" style="margin-top:8px">Draw your signature with finger or stylus. Name and consent required before confirming.</div>
+          <div class="small" style="margin-top:8px">You have 15 seconds to sign. Name and consent required before confirming.</div>
         </div>
 
-        <div class="footer">When you confirm, a receipt appears briefly; the kiosk will then reset for the next user.</div>
+        <div class="footer">When you confirm, a receipt appears for 2 seconds; the kiosk will then reset for the next user.</div>
       </div>
 
     </div>
@@ -110,26 +110,25 @@
       // Elements
       const startScreen = document.getElementById('startScreen');
       const signingUI = document.getElementById('signingUI');
-      const countdownEl = document.getElementById('countdown');
-      const startNowBtn = document.getElementById('startNow');
+      const startBtn = document.getElementById('startBtn');
       const enterFsBtn = document.getElementById('enterFs');
       const fullName = document.getElementById('fullName');
       const consent = document.getElementById('consent');
-      const status = document.getElementById('status');
+      const signTimerEl = document.getElementById('signTimer');
       const confirmBtn = document.getElementById('confirmBtn');
       const undoBtn = document.getElementById('undoBtn');
       const clearBtn = document.getElementById('clearBtn');
-      const backBtn = document.getElementById('backBtn');
+      const cancelBtn = document.getElementById('cancelBtn');
       const thankOverlay = document.getElementById('thankOverlay');
 
       const canvas = document.getElementById('sigCanvas');
       const ctx = canvas.getContext('2d');
 
       // Configuration per your request
-      const START_COUNTDOWN = 15; // seconds shown on start screen
+      const SIGNING_TIME = 15; // seconds allocated for signing after Start
       const THANK_SHOW = 2 * 1000; // ms to show thank you before reset
-      let countdown = START_COUNTDOWN;
-      let countdownInterval = null;
+      let signCountdown = SIGNING_TIME;
+      let signInterval = null;
 
       // Signature data
       let drawing = false;
@@ -157,9 +156,7 @@
         }
         canvas.width = w;
         canvas.height = h;
-        // use identity transform (we draw in backing pixels)
         ctx.setTransform(1,0,0,1,0,0);
-        // white background
         ctx.fillStyle = '#fff';
         ctx.fillRect(0,0,canvas.width,canvas.height);
         drawAll();
@@ -174,7 +171,6 @@
         return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY, p: (e.pressure || 0.5), t: Date.now() };
       }
 
-      // Simple smoothing: quadratic mid-point curves
       function drawStrokeSmooth(path, context) {
         if (!path || path.length === 0) return;
         if (path.length === 1) {
@@ -203,9 +199,9 @@
         drawStrokeSmooth(currentStroke, ctx);
       }
 
-      // Pointer event handlers
+      // Pointer events
       canvas.addEventListener('pointerdown', (e) => {
-        if (!signingVisible()) return;
+        if (!isSigningActive()) return;
         e.preventDefault();
         canvas.setPointerCapture(e.pointerId);
         drawing = true;
@@ -215,21 +211,17 @@
         updateConfirmState();
       });
       canvas.addEventListener('pointermove', (e) => {
-        if (!drawing || !signingVisible()) return;
+        if (!drawing || !isSigningActive()) return;
         e.preventDefault();
         currentStroke.push(getCanvasPoint(e));
         drawAll();
         updateConfirmState();
       });
       canvas.addEventListener('pointerup', (e) => {
-        if (!signingVisible()) return;
+        if (!isSigningActive()) return;
         if (drawing) {
           drawing = false;
-          if (currentStroke.length) {
-            strokes.push(currentStroke.slice());
-            currentStroke = [];
-            drawAll();
-          }
+          if (currentStroke.length) { strokes.push(currentStroke.slice()); currentStroke = []; drawAll(); }
         }
         try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
         updateConfirmState();
@@ -238,37 +230,32 @@
 
       // Controls
       undoBtn.addEventListener('click', ()=>{
-        if (!signingVisible()) return;
+        if (!isSigningActive()) return;
         if (currentStroke.length) { currentStroke = []; drawing=false; drawAll(); updateConfirmState(); return; }
         if (strokes.length) strokes.pop();
         drawAll();
         updateConfirmState();
       });
       clearBtn.addEventListener('click', ()=>{
-        if (!signingVisible()) return;
-        strokes = []; // reassign won't work for const; instead clear manually:
-        // but strokes is const, so clear:
+        if (!isSigningActive()) return;
         while(strokes.length) strokes.pop();
         currentStroke = [];
         drawAll();
         updateConfirmState();
       });
-      backBtn.addEventListener('click', ()=>{
-        // Cancel current session and go back to start screen and restart countdown
-        if (thankVisible()) return;
+      cancelBtn.addEventListener('click', ()=>{
+        // Cancel current signing session and return to start screen
         stopSigningSession();
         showStartScreen();
       });
 
-      // Confirm (Sign)
-      confirmBtn.addEventListener('click', async ()=>{
-        if (!signingVisible()) return;
+      // Confirm
+      confirmBtn.addEventListener('click', ()=>{
+        if (!isSigningActive()) return;
         if (!canConfirm()) return;
-        // Lock UI
         disableSigningInputs();
-        // Show thank-you overlay for 2 seconds
         showThankOverlay();
-        // After THANK_SHOW ms, reset to start screen
+        clearInterval(signInterval);
         setTimeout(()=>{
           hideThankOverlay();
           resetKioskSession();
@@ -276,128 +263,100 @@
         }, THANK_SHOW);
       });
 
-      // Helpers for UI state
-      function signingVisible(){ return signingUI.style.display !== 'none' && !signedOut; }
-      let signedOut = false;
+      // UI helpers
+      function isSigningActive(){ return signingUI.style.display !== 'none' && !sessionLocked; }
+      let sessionLocked = false;
       function disableSigningInputs(){
-        fullName.disabled = true;
-        consent.disabled = true;
-        confirmBtn.disabled = true;
-        undoBtn.disabled = true;
-        clearBtn.disabled = true;
-        backBtn.disabled = true;
-        signedOut = true;
+        fullName.disabled = true; consent.disabled = true; confirmBtn.disabled = true; undoBtn.disabled = true; clearBtn.disabled = true; cancelBtn.disabled = true; sessionLocked = true;
       }
       function enableSigningInputs(){
-        fullName.disabled = false;
-        consent.disabled = false;
-        confirmBtn.disabled = true;
-        undoBtn.disabled = false;
-        clearBtn.disabled = false;
-        backBtn.disabled = false;
-        signedOut = false;
+        fullName.disabled = false; consent.disabled = false; confirmBtn.disabled = true; undoBtn.disabled = false; clearBtn.disabled = false; cancelBtn.disabled = false; sessionLocked = false;
       }
 
       function canConfirm(){
-        const nameOk = (fullName.value || '').trim().length > 0;
+        const nameOk = (fullName.value||'').trim().length>0;
         const consentOk = consent.checked;
-        const hasStroke = strokes.length > 0;
+        const hasStroke = strokes.length>0;
         return nameOk && consentOk && hasStroke;
       }
 
       function updateConfirmState(){
         confirmBtn.disabled = !canConfirm();
-        // status text
-        if (!signingVisible()) { status.textContent = ''; return; }
-        if (!fullName.value.trim()) status.textContent = 'Enter name';
-        else if (!consent.checked) status.textContent = 'Consent required';
-        else if (strokes.length === 0 && currentStroke.length === 0) status.textContent = 'Sign in the box';
-        else status.textContent = 'Ready to confirm';
+        if (!isSigningActive()) { signTimerEl.textContent = '' ; return; }
+        // show time remaining in timer element
+        signTimerEl.textContent = (signCountdown>0? signCountdown + 's' : '0s');
       }
 
-      // Start screen countdown logic
-      function startCountdown(){
-        countdown = START_COUNTDOWN;
-        countdownEl.textContent = String(countdown);
-        clearInterval(countdownInterval);
-        countdownInterval = setInterval(()=>{
-          countdown--;
-          countdownEl.textContent = String(countdown);
-          if (countdown <= 0){
-            clearInterval(countdownInterval);
-            startSigningSession();
+      // Signing countdown logic (time allocated to user after pressing Start)
+      function startSigningCountdown(){
+        signCountdown = SIGNING_TIME;
+        signTimerEl.textContent = signCountdown + 's';
+        clearInterval(signInterval);
+        signInterval = setInterval(()=>{
+          signCountdown--;
+          signTimerEl.textContent = (signCountdown>0? signCountdown + 's':'0s');
+          if (signCountdown<=0){
+            clearInterval(signInterval);
+            // time expired: cancel session, show short timeout overlay then reset
+            disableSigningInputs();
+            showTimeoutOverlayAndReset();
           }
-        }, 1000);
+        },1000);
       }
-      startNowBtn.addEventListener('click', ()=>{
-        clearInterval(countdownInterval);
+
+      function showTimeoutOverlayAndReset(){
+        // reuse thankOverlay but change message
+        const previousText = thankOverlay.querySelector('.box').innerHTML;
+        thankOverlay.querySelector('.box').innerHTML = '<div style="font-size:1.25rem;font-weight:700">Session timed out</div><div class="small" style="margin-top:8px">Please wait while the kiosk resets.</div>';
+        thankOverlay.style.display = 'flex'; thankOverlay.setAttribute('aria-hidden','false');
+        setTimeout(()=>{
+          thankOverlay.style.display = 'none'; thankOverlay.setAttribute('aria-hidden','true');
+          // restore box content
+          thankOverlay.querySelector('.box').innerHTML = previousText;
+          resetKioskSession();
+          showStartScreen();
+        }, 1500);
+      }
+
+      // Start button behavior
+      startBtn.addEventListener('click', ()=>{
         startSigningSession();
       });
 
-      // Enter real fullscreen if user wants
       enterFsBtn.addEventListener('click', async ()=>{
-        try {
-          if (canvasWrap.requestFullscreen) await canvasWrap.requestFullscreen();
-        } catch(e) {}
+        try { if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen(); } catch(e) {}
       });
 
       // Session transitions
       function showStartScreen(){
         startScreen.style.display = '';
         signingUI.style.display = 'none';
-        // clear any signing state
         resetKioskSession();
-        // restart countdown
-        startCountdown();
       }
       function startSigningSession(){
         startScreen.style.display = 'none';
         signingUI.style.display = '';
         enableSigningInputs();
         fitCanvasToDisplay();
-        updateConfirmState();
+        startSigningCountdown();
       }
       function stopSigningSession(){
-        // hide signing UI
         signingUI.style.display = 'none';
         startScreen.style.display = '';
         enableSigningInputs();
+        clearInterval(signInterval);
       }
 
-      // Thank overlay
-      function showThankOverlay(){
-        thankOverlay.style.display = 'flex';
-        thankOverlay.setAttribute('aria-hidden','false');
-      }
-      function hideThankOverlay(){
-        thankOverlay.style.display = 'none';
-        thankOverlay.setAttribute('aria-hidden','true');
-      }
+      function showThankOverlay(){ thankOverlay.style.display='flex'; thankOverlay.setAttribute('aria-hidden','false'); }
+      function hideThankOverlay(){ thankOverlay.style.display='none'; thankOverlay.setAttribute('aria-hidden','true'); }
 
-      // reset the current kiosk session (clear inputs and strokes)
       function resetKioskSession(){
-        // clear signature
-        while(strokes.length) strokes.pop();
-        currentStroke = [];
-        drawAll();
-        fullName.value = '';
-        consent.checked = false;
-        signedOut = false;
-        enableSigningInputs();
-        updateConfirmState();
+        while(strokes.length) strokes.pop(); currentStroke=[]; drawAll(); fullName.value=''; consent.checked=false; sessionLocked=false; enableSigningInputs(); clearInterval(signInterval); signCountdown = SIGNING_TIME; signTimerEl.textContent = '';
       }
 
-      // initial state: show start screen and begin countdown
+      // initial state
       showStartScreen();
-
-      // resize handling
-      window.addEventListener('resize', ()=> {
-        fitCanvasToDisplay();
-      });
-
-      // On-page focus/visibility changes: keep behavior simple (no persistence); if tab is hidden, we keep countdown running
-      // done
-
+      window.addEventListener('resize', ()=>{ fitCanvasToDisplay(); });
     })();
   </script>
 </body>
